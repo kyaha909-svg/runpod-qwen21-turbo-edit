@@ -14,15 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Free up disk space (the PyTorch base image is large)
-        uses: jlumbroso/free-disk-space@v1
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: false
-          swap-storage: true
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            /usr/share/swift /usr/local/graalvm /usr/local/share/powershell
+          df -h /
 
       - name: Checkout
         uses: actions/checkout@v4
