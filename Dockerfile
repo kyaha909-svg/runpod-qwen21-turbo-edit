@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
     COMFY_DIR=/opt/ComfyUI \
     WORKSPACE_DIR=/workspace \
-    GGUF_QUANT=Q4_K_M \
+    GGUF_QUANT=Q6_K \
     LOWVRAM=auto \
     COMFY_PORT=8188
 
