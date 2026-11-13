@@ -54,11 +54,15 @@ done
 
 # Keep input/output on the volume so results survive a pod restart
 mkdir -p "${WORKSPACE_DIR:-/workspace}/input" "${WORKSPACE_DIR:-/workspace}/output"
-ln -sfn "${WORKSPACE_DIR:-/workspace}/input"  "$COMFY_DIR/input"
-ln -sfn "${WORKSPACE_DIR:-/workspace}/output" "$COMFY_DIR/output"
-
-# Make sure the bundled workflows are present even if the volume shadows user/
-cp -n /opt/workflows/*.json "$COMFY_DIR/user/default/workflows/" 2>/dev/null || true
+for d in input output; do
+  if [ -d "$COMFY_DIR/$d" ] && [ ! -L "$COMFY_DIR/$d" ]; then rm -rf "$COMFY_DIR/$d"; fi
+  ln -sfn "${WORKSPACE_DIR:-/workspace}/$d" "$COMFY_DIR/$d"
+done  
+# Refresh the bundled workflows and point their GGUF loader at the quant
+# this boot actually downloaded (GGUF_QUANT), whatever the image default was.
+cp -f /opt/workflows/*.json "$COMFY_DIR/user/default/workflows/" 2>/dev/null || true
+sed -i "s/qwen_image_2.1_turbo_[A-Za-z0-9_]*\.gguf/${DIT_FILE}/g" \
+  "$COMFY_DIR/user/default/workflows/"*.json 2>/dev/null || true
 
 # VRAM flag: auto = --lowvram at <=16 GB VRAM, normal at >16 GB.
 # Set LOWVRAM=on / off to force it.
