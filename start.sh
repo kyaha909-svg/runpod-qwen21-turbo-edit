@@ -21,10 +21,20 @@ ENC_URL="https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encod
 VAE_FILE="qwen_image_2.1_vae_bf16.safetensors"
 VAE_URL="https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/${VAE_FILE}"
 
+# MODEL_SET: "gguf" (default) = Abiray GGUF DiT above.
+# "int8-lora" = Comfy-Org int8 safetensors DiT + Turbo LoRA, used by the
+# bundled 2048x2048 workflow (qwen_image_2_1_turbo_image_edit_2048x2048.json).
+MODEL_SET="${MODEL_SET:-gguf}"
+INT8_DIT_FILE="qwen_image_2.1_int8_convrot.safetensors"
+INT8_DIT_URL="https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/${INT8_DIT_FILE}"
+LORA_FILE="qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"
+LORA_URL="https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/loras/${LORA_FILE}"
+
 mkdir -p \
   "$MODELS_DIR/diffusion_models" \
   "$MODELS_DIR/text_encoders" \
   "$MODELS_DIR/vae" \
+  "$MODELS_DIR/loras" \
   "$COMFY_DIR/user/default/workflows"
 
 # Public, ungated repos -> HF_TOKEN is optional. Pass it only if you set one.
@@ -40,12 +50,17 @@ download() { # $1=url  $2=dest — skip when a non-empty file is already there
   fi
 }
 
-download "$DIT_URL" "$MODELS_DIR/diffusion_models/$DIT_FILE"
+if [ "$MODEL_SET" = "int8-lora" ]; then
+  download "$INT8_DIT_URL" "$MODELS_DIR/diffusion_models/$INT8_DIT_FILE"
+  download "$LORA_URL" "$MODELS_DIR/loras/$LORA_FILE"
+else
+  download "$DIT_URL" "$MODELS_DIR/diffusion_models/$DIT_FILE"
+fi
 download "$ENC_URL" "$MODELS_DIR/text_encoders/$ENC_FILE"
 download "$VAE_URL" "$MODELS_DIR/vae/$VAE_FILE"
 
 # Link the volume models into ComfyUI's model folders (idempotent)
-for sub in diffusion_models text_encoders vae; do
+for sub in diffusion_models text_encoders vae loras; do
   for f in "$MODELS_DIR/$sub"/*; do
     [ -e "$f" ] || continue
     ln -sf "$f" "$COMFY_DIR/models/$sub/$(basename "$f")"
@@ -57,12 +72,20 @@ mkdir -p "${WORKSPACE_DIR:-/workspace}/input" "${WORKSPACE_DIR:-/workspace}/outp
 for d in input output; do
   if [ -d "$COMFY_DIR/$d" ] && [ ! -L "$COMFY_DIR/$d" ]; then rm -rf "$COMFY_DIR/$d"; fi
   ln -sfn "${WORKSPACE_DIR:-/workspace}/$d" "$COMFY_DIR/$d"
-done  
+done
 # Refresh the bundled workflows and point their GGUF loader at the quant
-# this boot actually downloaded (GGUF_QUANT), whatever the image default was.
+# this boot actually downloaded (GGUF QUANT), whatever the image default was.
 cp -f /opt/workflows/*.json "$COMFY_DIR/user/default/workflows/" 2>/dev/null || true
 sed -i "s/qwen_image_2.1_turbo_[A-Za-z0-9_]*\.gguf/${DIT_FILE}/g" \
   "$COMFY_DIR/user/default/workflows/"*.json 2>/dev/null || true
+
+# Hide the workflows whose models this MODEL_SET did not download
+if [ "$MODEL_SET" = "int8-lora" ]; then
+  rm -f "$COMFY_DIR/user/default/workflows/qwen21_turbo_edit.json" \
+        "$COMFY_DIR/user/default/workflows/qwen21_turbo_edit_2ref.json"
+else
+  rm -f "$COMFY_DIR/user/default/workflows/qwen_image_2_1_turbo_image_edit_2048x2048.json"
+fi
 
 # VRAM flag: auto = --lowvram at <=16 GB VRAM, normal at >16 GB.
 # Set LOWVRAM=on / off to force it.
@@ -78,7 +101,20 @@ case "${LOWVRAM:-auto}" in
     ;;
 esac
 
-echo "[start] Launching ComfyUI on port $PORT (quant: $QUANT)"
+echo "[start] Launching ComfyUI on port $PORT (model set: $MODEL_SET, quant: $QUANT)"
+
+# Optional JupyterLab on 8888 (the template exposes it as an HTTP port).
+# Guarded: if jupyter is not installed, this is a no-op log line.
+if command -v jupyter >/dev/null 2>&1; then
+  nohup jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root \
+    --ServerApp.token='' --ServerApp.password='' \
+    --ServerApp.root_dir="${WORKSPACE_DIR:-/workspace}" \
+    > /tmp/jupyter.log 2>&1 &
+  echo "[start] JupyterLab launching on port 8888"
+else
+  echo "[start] jupyter not found; skipping JupyterLab"
+fi
+
 cd "$COMFY_DIR"
 # shellcheck disable=SC2086
 exec python main.py --listen 0.0.0.0 --port "$PORT" $EXTRA_ARGS
