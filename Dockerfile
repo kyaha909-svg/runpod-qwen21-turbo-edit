@@ -27,6 +27,9 @@ RUN git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git ${COMFY_DI
     && pip install -r ${COMFY_DIR}/requirements.txt \
     && pip install -r ${COMFY_DIR}/custom_nodes/ComfyUI-GGUF/requirements.txt \
     && pip install -U "gguf>=0.13.0" huggingface_hub
+    
+    # JupyterLab for the template's 8888 port (start.sh launches it when present)
+    RUN pip install jupyterlab
 
 # Fail the build early if this ComfyUI checkout is too old for Qwen-Image 2.1
 RUN grep -q "TextEncodeQwenImage21" ${COMFY_DIR}/comfy_extras/nodes_qwen.py \
